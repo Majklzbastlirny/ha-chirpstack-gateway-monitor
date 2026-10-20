@@ -1,0 +1,95 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "ChirpStack Gateway Monitor",
+        "description": "Monitors the traffic ChirpStack gateways publish over MQTT, using Home Assistant's existing MQTT connection. Home Assistant's broker user must be allowed to read <prefix>/gateway/#.",
+        "data": {
+          "topic_prefix": "Topic prefix (region)",
+          "own_dev_addrs": "Own device addresses (DevAddr)"
+        },
+        "data_description": {
+          "topic_prefix": "ChirpStack region prefix, e.g. eu868 for eu868/gateway/<gateway id>/event/up. Leave empty for ChirpStack v3 topics (gateway/<gateway id>/...).",
+          "own_dev_addrs": "Optional, comma separated, e.g. 00a1b2c3. Each one gets a device with RSSI, SNR, packet loss and more."
+        }
+      }
+    },
+    "error": {
+      "invalid_prefix": "The prefix must not contain + or # wildcards or empty levels.",
+      "invalid_dev_addr": "Each DevAddr must be 8 hexadecimal characters."
+    },
+    "abort": {
+      "already_configured": "This topic prefix is already being monitored.",
+      "mqtt_not_configured": "Set up the MQTT integration first."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "ChirpStack Gateway Monitor options",
+        "data": {
+          "own_dev_addrs": "Own device addresses (DevAddr)",
+          "update_interval": "Update interval",
+          "window_minutes": "Statistics window",
+          "device_window_minutes": "Device window"
+        },
+        "data_description": {
+          "own_dev_addrs": "Comma separated. Update this if a node re-joins and gets a new DevAddr.",
+          "update_interval": "How often entity states are written. Traffic is counted continuously in between.",
+          "window_minutes": "Window for rates, channel airtime and signal averages.",
+          "device_window_minutes": "Window for devices heard, top talkers, packet loss, noise floor samples and TX duty cycle."
+        }
+      }
+    },
+    "error": {
+      "invalid_dev_addr": "Each DevAddr must be 8 hexadecimal characters."
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "online": { "name": "Online" }
+    },
+    "sensor": {
+      "last_seen": { "name": "Last seen" },
+      "rx_packets": { "name": "RX packets" },
+      "rx_packets_ok": { "name": "RX packets CRC OK" },
+      "rx_packets_bad_crc": { "name": "RX packets bad CRC" },
+      "tx_packets_requested": { "name": "TX packets requested" },
+      "tx_packets_emitted": { "name": "TX packets emitted" },
+      "lorawan_packets": { "name": "LoRaWAN packets" },
+      "non_lorawan_packets": { "name": "Non-LoRaWAN packets" },
+      "downlinks_failed": { "name": "Downlinks failed" },
+      "rx_rate": { "name": "RX rate" },
+      "crc_ok_ratio": { "name": "CRC OK ratio" },
+      "average_rssi": { "name": "Average RSSI" },
+      "average_snr": { "name": "Average SNR" },
+      "noise_floor": { "name": "Noise floor" },
+      "peak_channel_airtime": { "name": "Peak channel airtime" },
+      "tx_duty_cycle": { "name": "TX duty cycle" },
+      "duty_cycle_budget": { "name": "Duty cycle budget used" },
+      "rx_channel": { "name": "RX {frequency} MHz" },
+      "channel_airtime": { "name": "Airtime {frequency} MHz" },
+      "rx_modulation": { "name": "RX {modulation}" },
+      "tx_channel": { "name": "TX {frequency} MHz" },
+      "gateways_online": { "name": "Gateways online" },
+      "unique_packets": { "name": "Unique packets" },
+      "join_requests": { "name": "Join requests" },
+      "packet_rate": { "name": "Packet rate" },
+      "devices_heard": { "name": "Devices heard" },
+      "top_talker": { "name": "Top talker" },
+      "top_talker_share": { "name": "Top talker share" },
+      "rssi": { "name": "RSSI" },
+      "snr": { "name": "SNR" },
+      "gateway_rssi": { "name": "RSSI {gateway}" },
+      "gateway_snr": { "name": "SNR {gateway}" },
+      "gateway_reception": { "name": "Reception {gateway}" },
+      "gateway_count": { "name": "Gateways" },
+      "packets": { "name": "Packets" },
+      "packet_loss": { "name": "Packet loss" },
+      "frame_counter": { "name": "Frame counter" },
+      "spreading_factor": { "name": "Spreading factor" },
+      "frequency": { "name": "Frequency" },
+      "airtime": { "name": "Airtime" }
+    }
+  }
+}

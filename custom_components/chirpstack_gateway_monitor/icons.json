@@ -1,0 +1,41 @@
+{
+  "entity": {
+    "binary_sensor": {
+      "online": { "default": "mdi:router-wireless-off", "state": { "on": "mdi:router-wireless" } }
+    },
+    "sensor": {
+      "rx_packets": { "default": "mdi:download-network" },
+      "rx_packets_ok": { "default": "mdi:check-network" },
+      "rx_packets_bad_crc": { "default": "mdi:close-network" },
+      "tx_packets_requested": { "default": "mdi:upload-network-outline" },
+      "tx_packets_emitted": { "default": "mdi:upload-network" },
+      "lorawan_packets": { "default": "mdi:access-point-network" },
+      "non_lorawan_packets": { "default": "mdi:access-point-network-off" },
+      "downlinks_failed": { "default": "mdi:alert-outline" },
+      "rx_rate": { "default": "mdi:speedometer" },
+      "crc_ok_ratio": { "default": "mdi:check-decagram-outline" },
+      "noise_floor": { "default": "mdi:waveform" },
+      "peak_channel_airtime": { "default": "mdi:chart-bell-curve" },
+      "tx_duty_cycle": { "default": "mdi:timer-sand" },
+      "duty_cycle_budget": { "default": "mdi:timer-alert-outline" },
+      "rx_channel": { "default": "mdi:radio-tower" },
+      "channel_airtime": { "default": "mdi:chart-bell-curve-cumulative" },
+      "rx_modulation": { "default": "mdi:sine-wave" },
+      "tx_channel": { "default": "mdi:transmission-tower-export" },
+      "gateways_online": { "default": "mdi:router-wireless" },
+      "unique_packets": { "default": "mdi:package-variant" },
+      "join_requests": { "default": "mdi:account-plus-outline" },
+      "packet_rate": { "default": "mdi:speedometer" },
+      "devices_heard": { "default": "mdi:devices" },
+      "top_talker": { "default": "mdi:bullhorn-outline" },
+      "top_talker_share": { "default": "mdi:chart-pie" },
+      "gateway_count": { "default": "mdi:router-wireless" },
+      "gateway_reception": { "default": "mdi:access-point-check" },
+      "packets": { "default": "mdi:email-fast-outline" },
+      "packet_loss": { "default": "mdi:email-remove-outline" },
+      "frame_counter": { "default": "mdi:counter" },
+      "spreading_factor": { "default": "mdi:sine-wave" },
+      "airtime": { "default": "mdi:timer-outline" }
+    }
+  }
+}

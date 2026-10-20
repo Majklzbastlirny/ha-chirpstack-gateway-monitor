@@ -1,0 +1,14 @@
+# Only the integration belongs in this repository. Everything else in this folder stays local:
+# samples/ (captures and a logger with broker credentials), lorawan-capture/ (its own repository),
+# copies of server data, private notes.
+/*
+!/.gitignore
+!/README.md
+!/LICENSE
+!/hacs.json
+!/custom_components/
+!/tests/
+
+__pycache__/
+*.pyc
+.pytest_cache/

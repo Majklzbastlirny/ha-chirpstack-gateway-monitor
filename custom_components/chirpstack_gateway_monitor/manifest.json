@@ -1,0 +1,17 @@
+{
+  "domain": "chirpstack_gateway_monitor",
+  "name": "ChirpStack Gateway Monitor",
+  "codeowners": [
+    "@Majklzbastlirny"
+  ],
+  "config_flow": true,
+  "dependencies": [
+    "mqtt"
+  ],
+  "documentation": "https://github.com/Majklzbastlirny/ha-chirpstack-gateway-monitor",
+  "integration_type": "hub",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/Majklzbastlirny/ha-chirpstack-gateway-monitor/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}
