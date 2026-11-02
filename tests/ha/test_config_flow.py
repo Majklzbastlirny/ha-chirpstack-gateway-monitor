@@ -74,16 +74,21 @@ async def test_options_flow(hass: HomeAssistant, mqtt_mock: MqttMockHAClient) ->
 
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
-        {CONF_OWN_DEV_ADDRS: "00a1b2c3 260B1234", CONF_UPDATE_INTERVAL: 30.0, CONF_WINDOW: 5, CONF_DEVICE_WINDOW: 120},
+        {
+            CONF_OWN_DEV_ADDRS: "00a1b2c3 260B1234, 70:B3:D5:7E:D0:00:00:01",  # a DevEUI too, as ChirpStack shows it
+            CONF_UPDATE_INTERVAL: 30.0,
+            CONF_WINDOW: 5,
+            CONF_DEVICE_WINDOW: 120,
+        },
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     await hass.async_block_till_done()
     assert dict(entry.options) == {
-        CONF_OWN_DEV_ADDRS: [OWN, "260b1234"],
+        CONF_OWN_DEV_ADDRS: [OWN, "260b1234", "70b3d57ed0000001"],
         CONF_UPDATE_INTERVAL: 30,
         CONF_WINDOW: 5,
         CONF_DEVICE_WINDOW: 120,
     }
     # reloaded with the new options
     assert entry.runtime_data.aggregator.window == 300
-    assert set(entry.runtime_data.aggregator.nodes) == {OWN, "260b1234"}
+    assert set(entry.runtime_data.aggregator.nodes) == {OWN, "260b1234", "70b3d57ed0000001"}

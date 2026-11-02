@@ -23,7 +23,9 @@ bridge are decoded by a small built-in decoder; the JSON marshaler works too.
   broker ChirpStack uses.
 - The Home Assistant MQTT user must be allowed to read
   `<prefix>/gateway/+/event/+`, `<prefix>/gateway/+/state/+` and
-  `<prefix>/gateway/+/command/down`.
+  `<prefix>/gateway/+/command/down`. For nodes followed by DevEUI it also
+  reads ChirpStack's `application/+/device/+/event/up` and `/join` if allowed
+  (optional, see [Own nodes](#own-nodes-one-per-configured-deveui-or-devaddr)).
 - ChirpStack v4 (topics like `eu868/gateway/<gateway id>/event/up`). ChirpStack
   v3 topics (`gateway/<gateway id>/…`) work with an empty prefix.
 
@@ -57,15 +59,14 @@ Monitor*:
 | Field | Meaning |
 |---|---|
 | Topic prefix | ChirpStack region prefix, `eu868` by default |
-| Own device addresses | Optional DevAddrs of your nodes, e.g. `00a1b2c3` |
+| Own devices | Optional: your nodes' DevEUIs (best: followed when they join again), or DevAddrs, e.g. `70b3d57ed0000001, 00a1b2c3` |
 
 Gateways appear automatically as soon as they publish something (stats come
 every 30 s). Rename the gateway devices (e.g. *SenseCAP*, *Home gateway*,
 *Lab RAK2246*); Home Assistant offers to rename the entity IDs with them.
 
-**Options** (*Configure* on the integration): own DevAddrs (update this when a
-node re-joins with a new DevAddr), update interval (60 s), statistics window
-(10 min) and device window (60 min).
+**Options** (*Configure* on the integration): own devices, update interval
+(60 s), statistics window (10 min) and device window (60 min).
 
 ## Entities
 
@@ -94,7 +95,26 @@ non-LoRaWAN packets, join requests, packet rate, devices heard (attribute
 top talker's attributes list the ten busiest sources with a payload sample for
 non-LoRaWAN ones, and the RSSI/SNR each gateway hears the top talker with.
 
-### Own nodes (one per configured DevAddr)
+### Own nodes (one per configured DevEUI or DevAddr)
+
+Give a node by its **DevEUI** (16 hex digits, as ChirpStack shows it on the
+device's page). The gateways only see a node's DevAddr, and an OTAA node gets a
+new one every time it joins (a reset, a battery change, or when it decides it
+lost the network). A node given by DevEUI keeps its device and entities through
+that:
+
+- If Home Assistant's MQTT user may read ChirpStack's application events
+  (`application/+/device/+/event/up` and `/join`, published by ChirpStack's MQTT
+  integration, on by default), they give the node's current DevAddr exactly.
+- Otherwise, and for the very first uplink after a join in any case: the DevEUI
+  travels in clear in the join request, so a data uplink from an unknown
+  address with a new session's frame counter (0-3) within 2 minutes of the
+  node's join request is its new address.
+- *Device address* (diagnostic) shows the current DevAddr; its `joined`
+  attribute says since when.
+
+A node given by DevAddr is only followed until it joins again. Changing a DevAddr
+in the options into the node's DevEUI makes a new device; the old one is removed.
 
 RSSI and SNR (best over the gateways that heard the last uplink, attribute
 `gateway` says which one), gateways, packets, packet loss (FCnt gaps over the

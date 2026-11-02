@@ -90,6 +90,72 @@ def test_packet_loss_across_the_frame_counter_wrap() -> None:
     assert node["packet_loss"] == pytest.approx(100 * 2 / 6, abs=0.1)
 
 
+EUI, NEW = "70b3d57ed0000001", "00b2c3d4"
+
+
+def _join_phy(dev_eui: str, nonce: int = 27) -> bytes:
+    """A join request: MHDR, JoinEUI, DevEUI (little-endian), DevNonce, MIC."""
+    return bytes.fromhex("00" + "00" * 8 + bytes.fromhex(dev_eui)[::-1].hex() + nonce.to_bytes(2, "little").hex() + "11223344")
+
+
+def _phy(dev_addr: str, fcnt: int) -> bytes:
+    return bytes.fromhex("40" + bytes.fromhex(dev_addr)[::-1].hex() + "80" + fcnt.to_bytes(2, "little").hex()
+                         + "02aabbcc11223344")
+
+
+def test_node_followed_by_deveui_through_a_rejoin() -> None:
+    agg = Aggregator(own_dev_addrs=[EUI], now=0)
+    t = 1000.0
+    agg.handle("up", SENSECAP, _uplink(_phy(OWN, 4277), 868_100_000, 7, -95, 9.5), t)  # its address is not known yet
+    assert agg.snapshot(t)["nodes"][EUI]["packets"] == 0
+    for gw in (SENSECAP, HOME):  # it joins
+        agg.handle("up", gw, _uplink(_join_phy(EUI), 868_100_000, 9, -90, 9.0), t + 60)
+    agg.handle("up", SENSECAP, _uplink(_phy(NEW, 1), 867_300_000, 9, -95, 9.5), t + 66)
+    agg.handle("up", LAB, _uplink(_phy(NEW, 1), 867_300_000, 9, -80, 10.0), t + 66.2)
+    agg.handle("up", SENSECAP, _uplink(_phy(NEW, 2), 868_300_000, 7, -96, 9.5), t + 99)
+    node = agg.snapshot(t + 100)["nodes"][EUI]
+    assert (node["dev_addr"], node["dev_eui"], node["packets"], node["fcnt"]) == (NEW, EUI, 2, 2)
+    assert node["joined"] == datetime.fromtimestamp(t + 66, tz=timezone.utc)
+    assert node["packet_loss"] == 0
+
+    restored = Aggregator(own_dev_addrs=[EUI], now=t + 200)  # Home Assistant restarts
+    restored.load_storage(json.loads(json.dumps(agg.to_storage())))
+    restored.handle("up", SENSECAP, _uplink(_phy(NEW, 3), 868_100_000, 7, -95, 9.5), t + 210)
+    assert restored.snapshot(t + 211)["nodes"][EUI]["fcnt"] == 3
+
+
+def test_only_a_new_session_soon_after_the_join_is_taken_over() -> None:
+    agg = Aggregator(own_dev_addrs=[EUI], now=0)
+    agg.handle("app", "", json.dumps({"deviceInfo": {"devEui": EUI}, "devAddr": OWN}).encode(), 1)
+    agg.handle("up", SENSECAP, _uplink(_join_phy("70b3d57ed0000099"), 868_100_000, 9, -90, 9.0), 10)  # not ours
+    agg.handle("up", SENSECAP, _uplink(_phy("00c3d4e5", 1), 868_100_000, 9, -90, 9.0), 16)
+    agg.handle("up", SENSECAP, _uplink(_join_phy(EUI), 868_100_000, 9, -90, 9.0), 20)
+    agg.handle("up", SENSECAP, _uplink(_phy("00d4e5f6", 50), 868_100_000, 7, -90, 9.0), 26)  # an old session
+    agg.handle("up", SENSECAP, _uplink(_phy("260b1234", 1), 868_100_000, 7, -90, 9.0), 27)  # another network
+    agg.handle("up", SENSECAP, _uplink(_phy("00e5f6a7", 1), 868_100_000, 7, -90, 9.0), 150)  # too late
+    assert agg.snapshot(151)["nodes"][EUI]["dev_addr"] == OWN
+    agg.handle("up", SENSECAP, _uplink(_join_phy(EUI), 868_100_000, 9, -90, 9.0), 200)
+    agg.handle("up", SENSECAP, _uplink(_phy(NEW, 3), 868_100_000, 7, -90, 9.0), 272)  # FCnt 1 and 2 were lost
+    assert agg.snapshot(273)["nodes"][EUI]["dev_addr"] == NEW
+
+
+def test_chirpstack_application_events_give_the_address() -> None:
+    integration = pytest.importorskip("chirpstack_api.integration")
+    agg = Aggregator(own_dev_addrs=[EUI], now=0)
+    event = integration.UplinkEvent(dev_addr=NEW, f_cnt=10)
+    event.device_info.dev_eui = EUI
+    event.device_info.device_name = "UART node"
+    agg.handle("app", "", event.SerializeToString(), 10)  # protobuf
+    agg.handle("up", SENSECAP, _uplink(_phy(NEW, 11), 868_100_000, 7, -95, 9.5), 40)
+    node = agg.snapshot(41)["nodes"][EUI]
+    assert (node["dev_addr"], node["packets"]) == (NEW, 1)
+    joined = json.dumps({"deviceInfo": {"devEui": EUI.upper(), "deviceName": "UART node"}, "devAddr": "00C3D4E5"})
+    agg.handle("app", "", joined.encode(), 50)  # JSON, as ChirpStack sends it by default
+    assert agg.snapshot(51)["nodes"][EUI]["dev_addr"] == "00c3d4e5"
+    agg.handle("app", "", json.dumps({"deviceInfo": {"devEui": "70b3d57ed0000099"}, "devAddr": "00d4e5f6"}).encode(), 60)
+    assert agg.addr_node == {"00c3d4e5": EUI}  # somebody else's device: ignored
+
+
 def test_node_reception_per_gateway() -> None:
     agg = Aggregator(own_dev_addrs=[OWN], now=0)
     agg.handle("up", SENSECAP, _uplink(_own_phy(10), 868_100_000, 7, -95, 9.5), 100)

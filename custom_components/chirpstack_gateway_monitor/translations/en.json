@@ -6,17 +6,17 @@
         "description": "Monitors the traffic ChirpStack gateways publish over MQTT, using Home Assistant's existing MQTT connection. Home Assistant's broker user must be allowed to read <prefix>/gateway/#.",
         "data": {
           "topic_prefix": "Topic prefix (region)",
-          "own_dev_addrs": "Own device addresses (DevAddr)"
+          "own_dev_addrs": "Own devices (DevEUI or DevAddr)"
         },
         "data_description": {
           "topic_prefix": "ChirpStack region prefix, e.g. eu868 for eu868/gateway/<gateway id>/event/up. Leave empty for ChirpStack v3 topics (gateway/<gateway id>/...).",
-          "own_dev_addrs": "Optional, comma separated, e.g. 00a1b2c3. Each one gets a device with RSSI, SNR, packet loss and more."
+          "own_dev_addrs": "Optional, comma separated. A DevEUI (16 hex digits, as ChirpStack shows it) follows the device when it joins again; a DevAddr (8) only lasts until then. Each one gets a device with RSSI, SNR, packet loss and more."
         }
       }
     },
     "error": {
       "invalid_prefix": "The prefix must not contain + or # wildcards or empty levels.",
-      "invalid_dev_addr": "Each DevAddr must be 8 hexadecimal characters."
+      "invalid_dev_addr": "Each entry must be a DevEUI (16 hexadecimal characters) or a DevAddr (8)."
     },
     "abort": {
       "already_configured": "This topic prefix is already being monitored.",
@@ -28,13 +28,13 @@
       "init": {
         "title": "ChirpStack Gateway Monitor options",
         "data": {
-          "own_dev_addrs": "Own device addresses (DevAddr)",
+          "own_dev_addrs": "Own devices (DevEUI or DevAddr)",
           "update_interval": "Update interval",
           "window_minutes": "Statistics window",
           "device_window_minutes": "Device window"
         },
         "data_description": {
-          "own_dev_addrs": "Comma separated. Update this if a node re-joins and gets a new DevAddr.",
+          "own_dev_addrs": "Comma separated. Prefer the DevEUI (16 hex digits): the device is then followed when it joins again and gets a new DevAddr. Changing a DevAddr into a DevEUI makes a new device in Home Assistant.",
           "update_interval": "How often entity states are written. Traffic is counted continuously in between.",
           "window_minutes": "Window for rates, channel airtime and signal averages.",
           "device_window_minutes": "Window for devices heard, top talkers, packet loss, noise floor samples and TX duty cycle."
@@ -42,7 +42,7 @@
       }
     },
     "error": {
-      "invalid_dev_addr": "Each DevAddr must be 8 hexadecimal characters."
+      "invalid_dev_addr": "Each entry must be a DevEUI (16 hexadecimal characters) or a DevAddr (8)."
     }
   },
   "entity": {
@@ -87,6 +87,7 @@
       "packets": { "name": "Packets" },
       "packet_loss": { "name": "Packet loss" },
       "frame_counter": { "name": "Frame counter" },
+      "device_address": { "name": "Device address" },
       "spreading_factor": { "name": "Spreading factor" },
       "frequency": { "name": "Frequency" },
       "airtime": { "name": "Airtime" }

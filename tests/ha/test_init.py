@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import base64
+import json
+
 import pytest
 
 from homeassistant.config_entries import ConfigEntryState
@@ -262,3 +265,48 @@ async def test_other_topic_prefixes(
     await hass.async_block_till_done()
     await refresh(hass, entry)
     assert entry.runtime_data.data["gateways"][SENSECAP]["rx_received"] == 134
+
+
+async def test_node_followed_by_deveui(hass: HomeAssistant, mqtt_mock: MqttMockHAClient) -> None:
+    """A node given by its DevEUI keeps its device and entities when it joins again."""
+    eui, new = "70b3d57ed0000001", "00b2c3d4"
+    entry = await setup_entry(hass, make_entry(own=[eui]))
+    node = f"sensor.lorawan_node_{eui}"
+
+    def uplink(dev_addr: str, fcnt: int) -> bytes:
+        phy = bytes.fromhex("40" + bytes.fromhex(dev_addr)[::-1].hex() + "80" + fcnt.to_bytes(2, "little").hex()
+                            + "02aabbcc11223344")
+        return json.dumps({
+            "phyPayload": base64.b64encode(phy).decode(),
+            "txInfo": {"frequency": 868100000,
+                       "modulation": {"lora": {"bandwidth": 125000, "spreadingFactor": 7, "codeRate": "CR_4_5"}}},
+            "rxInfo": {"rssi": -95, "snr": 9.5, "crcStatus": "CRC_OK"},
+        }).encode()
+
+    # ChirpStack's application event says which address the node uses now
+    async_fire_mqtt_message(hass, f"application/1/device/{eui}/event/up",
+                            json.dumps({"deviceInfo": {"devEui": eui, "deviceName": "UART node"}, "devAddr": OWN}))
+    fire(hass, SENSECAP, "event/up", uplink(OWN, 4277))
+    await hass.async_block_till_done()
+    await refresh(hass, entry)
+    assert state(hass, f"{node}_device_address") == OWN
+    assert state(hass, f"{node}_packets") == "1"
+    assert device(hass, entry, f"node_{eui}")
+
+    # it joins again: the join request (DevEUI in clear), then a new session from a new address
+    join = bytes.fromhex("00" + "00" * 8 + bytes.fromhex(eui)[::-1].hex() + "1b00" + "11223344")
+    fire(hass, SENSECAP, "event/up", json.dumps({
+        "phyPayload": base64.b64encode(join).decode(),
+        "txInfo": {"frequency": 868100000,
+                   "modulation": {"lora": {"bandwidth": 125000, "spreadingFactor": 9, "codeRate": "CR_4_5"}}},
+        "rxInfo": {"rssi": -95, "snr": 9.5, "crcStatus": "CRC_OK"},
+    }).encode())
+    await hass.async_block_till_done()
+    fire(hass, SENSECAP, "event/up", uplink(new, 1))
+    await hass.async_block_till_done()
+    await refresh(hass, entry)
+    assert state(hass, f"{node}_device_address") == new
+    assert state(hass, f"{node}_packets") == "2"
+    assert state(hass, f"{node}_frame_counter") == "1"
+    assert hass.states.get(f"{node}_device_address").attributes["dev_eui"] == eui
+

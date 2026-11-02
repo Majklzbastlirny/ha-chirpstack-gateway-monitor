@@ -18,6 +18,9 @@ DEFAULT_DEVICE_WINDOW: Final = 60  # minutes: devices heard, top talkers, packet
 STORAGE_VERSION: Final = 1
 STORAGE_SAVE_INTERVAL: Final = 300  # seconds
 
+# ChirpStack's application events (no region prefix): the exact DevAddr of nodes followed by DevEUI
+APP_TOPICS: Final = ("application/+/device/+/event/up", "application/+/device/+/event/join")
+
 # MQTT topic suffix (after <prefix>/gateway/<gateway id>/) -> message kind
 TOPICS: Final = {
     "event/up": "up",

@@ -14,6 +14,7 @@ from . import lorawan
 from .messages import (
     FSK,
     LORA,
+    AppEvent,
     ConnState,
     Downlink,
     DownlinkItem,
@@ -23,6 +24,7 @@ from .messages import (
     Uplink,
     is_json,
     modulation_label,
+    parse_app_event,
     parse_conn_state,
     parse_downlink,
     parse_stats,
@@ -35,6 +37,7 @@ KIND_STATS = "stats"
 KIND_ACK = "ack"
 KIND_CONN = "conn"
 KIND_DOWN = "down"
+KIND_APP = "app"  # ChirpStack's application events, for nodes followed by DevEUI
 
 BUCKET_SECONDS = 10.0
 DEDUP_SECONDS = 5.0
@@ -44,6 +47,10 @@ MIN_OFFLINE_TIMEOUT = 90.0
 MAX_WEAK_SAMPLES = 1000
 TOP_TALKERS = 10
 STORAGE_FORMAT = 1
+# A node that joined sends its first uplink this soon after the join request, with a new
+# session's frame counter (0 or 1; one may be lost).
+REJOIN_WINDOW = 120.0
+REJOIN_FCNT = 3
 
 GATEWAY_TOTALS = (
     "rx_received",
@@ -237,10 +244,14 @@ class GatewayState:
 
 
 class NodeState:
-    """One of the user's own devices, identified by DevAddr."""
+    """One of the user's own devices, by its DevAddr, or by its DevEUI: then followed through
+    re-joins, each of which gives it a new DevAddr."""
 
-    def __init__(self, dev_addr: str) -> None:
-        self.dev_addr = dev_addr
+    def __init__(self, node_id: str) -> None:
+        self.node_id = node_id
+        self.dev_eui: str | None = node_id if len(node_id) == 16 else None
+        self.dev_addr: str | None = None if self.dev_eui else node_id  # the current one
+        self.joined: float | None = None  # when the current DevAddr was taken over
         self.packets = 0
         self.last_seen: float | None = None
         self.fcnt: int | None = None
@@ -282,6 +293,8 @@ class NodeState:
 
     def to_storage(self) -> dict[str, Any]:
         return {
+            "dev_addr": self.dev_addr,
+            "joined": self.joined,
             "packets": self.packets,
             "last_seen": self.last_seen,
             "fcnt": self.fcnt,
@@ -292,6 +305,9 @@ class NodeState:
         }
 
     def load(self, data: dict[str, Any]) -> None:
+        if self.dev_eui and isinstance(data.get("dev_addr"), str):
+            self.dev_addr = data["dev_addr"]
+            self.joined = data.get("joined")
         self.packets = int(data.get("packets") or 0)
         self.last_seen = data.get("last_seen")
         self.fcnt = data.get("fcnt")
@@ -331,6 +347,8 @@ class Aggregator:
         self._talker_labels: dict[str, str] = {}
         self._talker_samples: dict[str, str] = {}  # non-LoRaWAN key -> last payload prefix (hex)
         self._pending: dict[int, tuple[float, str, list[DownlinkItem]]] = {}
+        self.addr_node: dict[str, str] = {}  # current DevAddr -> node followed by DevEUI
+        self._joins: dict[str, float] = {}  # DevEUI of a followed node -> its latest join request
 
     # ------------------------------------------------------------------ input
 
@@ -348,6 +366,8 @@ class Aggregator:
             self.on_downlink(parse_downlink(payload, gateway_id), now)
         elif kind == KIND_CONN:
             self.on_conn_state(parse_conn_state(payload, gateway_id), now)
+        elif kind == KIND_APP:
+            self.on_app_event(parse_app_event(payload), now)
 
     def record_error(self, kind: str, gateway_id: str, err: BaseException) -> None:
         self.errors[kind] += 1
@@ -444,8 +464,10 @@ class Aggregator:
             rx[1] += up.rssi
             rx[2] += up.snr or 0.0
 
-        if is_lorawan and info.uplink and info.dev_addr in self.nodes:
-            node = self.nodes[info.dev_addr]
+        if is_lorawan and info.mtype == 0 and info.dev_eui in self.nodes:
+            self._joins[info.dev_eui] = now  # a followed node joins: its new address comes next
+        node = self._node_for(info, now) if is_lorawan and info.uplink and info.dev_addr else None
+        if node is not None:
             if new_transmission:
                 node.packets += 1
                 node.last_seen = now
@@ -463,6 +485,42 @@ class Aggregator:
             node.per_gateway[up.gateway_id] = (up.rssi, up.snr, now)
             if node.history:
                 node.history[-1][2].add(up.gateway_id)
+
+    def _node_for(self, info: lorawan.PhyInfo, now: float) -> NodeState | None:
+        """The own node an uplink comes from. A node followed by DevEUI uses the address its
+        last join led to: the gateways see the DevEUI only in the join request (the address the
+        network answers with is encrypted), so a data uplink with a new session's frame counter
+        from an unknown address, soon after the join request, is the node's new address.
+        ChirpStack's application events, where subscribed, give the address exactly too, but
+        they arrive after the gateways' uplink, so the first one is still attributed here."""
+        dev = info.dev_addr or ""
+        node = self.nodes.get(dev)
+        if node is None and dev in self.addr_node:
+            node = self.nodes.get(self.addr_node[dev])
+        if node is None and self._joins and info.fcnt is not None and info.fcnt <= REJOIN_FCNT:
+            for eui in [eui for eui, at in self._joins.items() if now - at > REJOIN_WINDOW]:
+                del self._joins[eui]
+            if self._joins:
+                candidate = self.nodes[max(self._joins, key=self._joins.__getitem__)]  # the latest join
+                same_network = candidate.dev_addr is None or (
+                    lorawan.network_label(candidate.dev_addr) == lorawan.network_label(dev))
+                if same_network:  # else another network's device starting a session just now
+                    del self._joins[candidate.node_id]
+                    self._map(candidate, dev, now)
+                    node = candidate
+        return node
+
+    def _map(self, node: NodeState, dev_addr: str, now: float) -> None:
+        for addr in [addr for addr, node_id in self.addr_node.items() if node_id == node.node_id]:
+            del self.addr_node[addr]
+        self.addr_node[dev_addr] = node.node_id
+        node.dev_addr, node.joined = dev_addr, now
+
+    def on_app_event(self, event: AppEvent, now: float) -> None:
+        """ChirpStack's uplink or join event: the exact address of a node followed by DevEUI."""
+        node = self.nodes.get(event.dev_eui or "")
+        if node is not None and node.dev_eui and event.dev_addr and node.dev_addr != event.dev_addr:
+            self._map(node, event.dev_addr, now)
 
     @staticmethod
     def _talker(info: lorawan.PhyInfo, is_lorawan: bool, mod: Modulation) -> tuple[str, str, str | None]:
@@ -735,6 +793,9 @@ class Aggregator:
                 "uplinks": sent,
             }
         return {
+            "dev_addr": node.dev_addr,
+            "dev_eui": node.dev_eui,
+            "joined": _utc(node.joined),
             "last_seen": _utc(node.last_seen),
             "packets": node.packets,
             "fcnt": node.fcnt,
@@ -773,6 +834,9 @@ class Aggregator:
         for addr, ndata in (data.get("nodes") or {}).items():
             if addr in self.nodes:
                 self.nodes[addr].load(ndata)
+        for node in self.nodes.values():
+            if node.dev_eui and node.dev_addr:
+                self.addr_node[node.dev_addr] = node.node_id
 
     def diagnostics(self, now: float) -> dict[str, Any]:
         return {
@@ -780,6 +844,7 @@ class Aggregator:
             "window_s": self.window,
             "device_window_s": self.device_window,
             "own_dev_addrs": sorted(self.nodes),
+            "followed_addresses": dict(self.addr_node),
             "messages": dict(self.message_counts),
             "payload_formats": dict(self.formats),
             "decode_errors": dict(self.errors),

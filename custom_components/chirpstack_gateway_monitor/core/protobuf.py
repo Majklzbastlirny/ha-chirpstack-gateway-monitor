@@ -329,3 +329,8 @@ DOWNLINK_TX_ACK: Schema = {
 }
 
 CONN_STATE: Schema = {1: ("gateway_id_legacy", BYTES), 2: ("state", ENUM), 3: ("gateway_id", STRING)}
+
+# ChirpStack's application events (integration.UplinkEvent / JoinEvent): only what links a
+# DevEUI to its current DevAddr.
+APP_DEVICE_INFO: Schema = {7: ("device_name", STRING), 8: ("dev_eui", STRING)}
+APP_EVENT: Schema = {3: ("device_info", APP_DEVICE_INFO), 4: ("dev_addr", STRING)}

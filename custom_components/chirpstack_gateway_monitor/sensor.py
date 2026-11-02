@@ -227,6 +227,14 @@ NODE_SENSORS: tuple[ChirpStackSensorDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda d: d["airtime_ms"],
     ),
+    ChirpStackSensorDescription(  # nodes followed by DevEUI: the address their last join gave them
+        key="device_address",
+        translation_key="device_address",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda d: d["dev_addr"],
+        attrs_fn=lambda d: {"dev_eui": d["dev_eui"], "joined": d["joined"]},
+        exists_fn=lambda d: d["dev_eui"] is not None,
+    ),
 )
 
 

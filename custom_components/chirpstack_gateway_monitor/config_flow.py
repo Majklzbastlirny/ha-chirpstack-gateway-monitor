@@ -29,14 +29,16 @@ from .const import (
     DOMAIN,
 )
 
-_DEV_ADDR = re.compile(r"^[0-9a-f]{8}$")
+_DEVICE = re.compile(r"^(?:[0-9a-f]{8}|[0-9a-f]{16})$")  # a DevAddr or a DevEUI
 
 
 def parse_dev_addrs(text: str | None) -> tuple[list[str], list[str]]:
-    """Split user input into (valid DevAddrs, invalid entries)."""
-    items = [item.lower().removeprefix("0x") for item in re.split(r"[\s,;]+", text or "") if item]
-    valid = list(dict.fromkeys(item for item in items if _DEV_ADDR.match(item)))
-    invalid = [item for item in items if not _DEV_ADDR.match(item)]
+    """Split user input into (valid DevAddrs and DevEUIs, invalid entries)."""
+    items = [
+        re.sub(r"[:\-]", "", item.lower()).removeprefix("0x") for item in re.split(r"[\s,;]+", text or "") if item
+    ]
+    valid = list(dict.fromkeys(item for item in items if _DEVICE.match(item)))
+    invalid = [item for item in items if not _DEVICE.match(item)]
     return valid, invalid
 
 

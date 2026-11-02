@@ -481,6 +481,40 @@ def parse_tx_ack(payload: bytes, gateway_id: str) -> TxAck:
     return TxAck(gateway_id=gateway_id, downlink_id=_int(_g(data, "downlink_id")) or 0, statuses=statuses)
 
 
+@dataclass
+class AppEvent:
+    """A ChirpStack application event (uplink or join): which address a device uses now."""
+
+    dev_eui: str | None
+    dev_addr: str | None
+    device_name: str | None = None
+
+
+def _hex_id(value: Any, size: int) -> str | None:
+    """A DevEUI / DevAddr as lowercase hex: as ChirpStack v4 sends it, or base64 (v3)."""
+    if not isinstance(value, str) or not value:
+        return None
+    text = value.lower()
+    if len(text) == 2 * size and all(c in "0123456789abcdef" for c in text):
+        return text
+    try:
+        raw = base64.b64decode(value, validate=True)
+    except ValueError:
+        return None
+    return raw.hex() if len(raw) == size else None
+
+
+def parse_app_event(payload: bytes) -> AppEvent:
+    """Parse application/<app>/device/<DevEUI>/event/up or /join (JSON or protobuf)."""
+    data = _load(payload, pb.APP_EVENT)
+    info = _g(data, "device_info") or {}
+    return AppEvent(
+        dev_eui=_hex_id(_g(info, "dev_eui") or data.get("devEUI"), 8),
+        dev_addr=_hex_id(_g(data, "dev_addr"), 4),
+        device_name=_g(info, "device_name") or data.get("deviceName") or None,
+    )
+
+
 def parse_conn_state(payload: bytes, gateway_id: str) -> ConnState:
     """Parse a state/conn payload (gw.ConnState)."""
     data = _load(payload, pb.CONN_STATE)

@@ -15,6 +15,7 @@ from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .const import (
+    APP_TOPICS,
     CONF_DEVICE_WINDOW,
     CONF_OWN_DEV_ADDRS,
     CONF_TOPIC_PREFIX,
@@ -28,7 +29,7 @@ from .const import (
     STORAGE_VERSION,
     TOPICS,
 )
-from .core.aggregator import Aggregator
+from .core.aggregator import KIND_APP, Aggregator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -96,6 +97,12 @@ class ChirpStackCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 encoding=None,
             )
             self.config_entry.async_on_unload(unsubscribe)
+        if any(len(node) == 16 for node in self.own_dev_addrs):  # nodes followed by DevEUI
+            for topic in APP_TOPICS:
+                unsubscribe = await mqtt.async_subscribe(
+                    self.hass, topic, self._handle_app_message, qos=0, encoding=None
+                )
+                self.config_entry.async_on_unload(unsubscribe)
 
     def _message_handler(self, kind: str) -> Callable[[mqtt.ReceiveMessage], None]:
         @callback
@@ -117,17 +124,33 @@ class ChirpStackCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         try:
             self.aggregator.handle(kind, gateway_id, payload, time.time())
         except Exception as err:  # noqa: BLE001 - one bad packet must not break the subscription
-            self.aggregator.record_error(kind, gateway_id, err)
-            if kind not in self._warned:
-                self._warned.add(kind)
-                _LOGGER.warning(
-                    "Could not process %s message on %s: %r (further errors are logged at debug level)",
-                    kind,
-                    msg.topic,
-                    err,
-                )
-            else:
-                _LOGGER.debug("Could not process %s message on %s", kind, msg.topic, exc_info=True)
+            self._report(kind, gateway_id, msg.topic, err)
+
+    @callback
+    def _handle_app_message(self, msg: mqtt.ReceiveMessage) -> None:
+        """application/<app>/device/<DevEUI>/event/<up|join>, from ChirpStack itself."""
+        payload = msg.payload
+        if not payload:
+            return
+        if isinstance(payload, str):
+            payload = payload.encode()
+        try:
+            self.aggregator.handle(KIND_APP, "", payload, time.time())
+        except Exception as err:  # noqa: BLE001 - one bad message must not break the subscription
+            self._report(KIND_APP, "application", msg.topic, err)
+
+    def _report(self, kind: str, source: str, topic: str, err: Exception) -> None:
+        self.aggregator.record_error(kind, source, err)
+        if kind not in self._warned:
+            self._warned.add(kind)
+            _LOGGER.warning(
+                "Could not process %s message on %s: %r (further errors are logged at debug level)",
+                kind,
+                topic,
+                err,
+            )
+        else:
+            _LOGGER.debug("Could not process %s message on %s", kind, topic, exc_info=True)
 
     async def _async_update_data(self) -> dict[str, Any]:
         snapshot = self.aggregator.snapshot(time.time())
